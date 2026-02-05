@@ -68,7 +68,7 @@ class CommonsDiscoverSpider(scrapy.Spider):
         "DOWNLOAD_DELAY": 0.5,
         "CONCURRENT_REQUESTS_PER_DOMAIN": 3,
         "AUTOTHROTTLE_ENABLED": True,
-        "LOG_LEVEL": "INFO",
+        "LOG_LEVEL": "DEBUG",  # Temporarily enable debug logging
     }
 
     def __init__(self, *args, **kwargs):
@@ -119,6 +119,7 @@ class CommonsDiscoverSpider(scrapy.Spider):
             "iiprop": "url|size|mime|sha1|extmetadata",
         }
         url = "https://commons.wikimedia.org/w/api.php?" + urlencode(params)
+        self.logger.debug(f"API request URL for '{query}': {url}")
         return scrapy.Request(
             url,
             callback=self.parse_api,
@@ -130,7 +131,22 @@ class CommonsDiscoverSpider(scrapy.Spider):
         query = response.meta["query"]
         data = response.json()
 
+        # Debug: Log if there are any errors or warnings
+        if "error" in data:
+            self.logger.error(f"API error for '{query}': {data['error']}")
+        if "warnings" in data:
+            self.logger.warning(f"API warning for '{query}': {data['warnings']}")
+
+        # Debug: Check what keys are present
+        if "query" not in data:
+            self.logger.warning(f"No 'query' key in API response for '{query}'. Keys: {list(data.keys())}")
+
         pages = (data.get("query", {}).get("pages", {}) or {}).values()
+        pages = list(pages)  # Convert to list so we can iterate multiple times
+
+        # Debug: Log page count
+        if len(pages) == 0:
+            self.logger.warning(f"API returned 0 pages for query '{query}'")
 
         def ext_val(ext, key):
             """Extract value from extmetadata."""
