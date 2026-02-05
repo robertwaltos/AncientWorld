@@ -111,9 +111,10 @@ class CommonsDiscoverSpider(scrapy.Spider):
             "action": "query",
             "format": "json",
             "generator": "search",
-            "gsrsearch": f'intitle:"File:" {query}',
+            "gsrsearch": f'{query} filetype:bitmap|drawing',  # Removed intitle:"File:" - it's implicit
             "gsrlimit": "50",
             "gsroffset": str(offset),
+            "gsrnamespace": "6",  # File namespace
             "prop": "imageinfo|categories",
             "cllimit": "50",
             "iiprop": "url|size|mime|sha1|extmetadata",

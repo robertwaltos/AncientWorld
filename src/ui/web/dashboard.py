@@ -173,9 +173,37 @@ def discovery_page():
     This allows building a large candidate pool to prioritize downloads.
     """)
 
-    if st.button("🚀 Start Wikimedia Discovery", type="primary"):
-        st.info("Run in terminal:")
-        st.code("cd ancientgeo && scrapy crawl commons_discover")
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        if st.button("🚀 Start Wikimedia Discovery", type="primary", use_container_width=True):
+            with st.spinner("Starting discovery spider..."):
+                try:
+                    # Run spider in subprocess
+                    import os
+                    scrapy_dir = ROOT / "ancientgeo"
+                    result = subprocess.run(
+                        ["python", "-m", "scrapy", "crawl", "commons_discover"],
+                        cwd=str(scrapy_dir),
+                        capture_output=True,
+                        text=True,
+                        timeout=300  # 5 minute timeout for initial start
+                    )
+
+                    if result.returncode == 0:
+                        st.success("✅ Discovery spider completed successfully!")
+                        st.expander("View output").code(result.stdout)
+                    else:
+                        st.error(f"❌ Spider failed with return code {result.returncode}")
+                        st.expander("View error").code(result.stderr)
+                except subprocess.TimeoutExpired:
+                    st.warning("⏱️ Spider is still running (timeout after 5 minutes). Check terminal for progress.")
+                except Exception as e:
+                    st.error(f"❌ Error starting spider: {str(e)}")
+
+    with col2:
+        if st.button("📊 Refresh Stats", use_container_width=True):
+            st.rerun()
 
 
 def download_page():
@@ -199,20 +227,78 @@ def download_page():
 
     st.progress(min(used_gb / MAX_STORAGE_GB, 1.0))
 
-    if st.button("🚀 Start Download", type="primary"):
-        st.code("python tools/download_capped.py")
+    if st.button("🚀 Start Download", type="primary", use_container_width=True):
+        with st.spinner("Starting download process..."):
+            try:
+                result = subprocess.run(
+                    ["python", "tools/download_capped.py"],
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=600  # 10 minute timeout
+                )
+
+                if result.returncode == 0:
+                    st.success("✅ Download completed successfully!")
+                    with st.expander("View output"):
+                        st.code(result.stdout)
+                    st.rerun()  # Refresh stats
+                else:
+                    st.error(f"❌ Download failed with return code {result.returncode}")
+                    with st.expander("View error"):
+                        st.code(result.stderr)
+            except subprocess.TimeoutExpired:
+                st.warning("⏱️ Download is still running (timeout after 10 minutes). Check terminal for progress.")
+            except Exception as e:
+                st.error(f"❌ Error starting download: {str(e)}")
 
     st.markdown("---")
     st.subheader("Deduplication")
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Remove Exact Duplicates"):
-            st.code("python tools/dedupe_exact.py")
+        if st.button("🗑️ Remove Exact Duplicates", use_container_width=True):
+            with st.spinner("Running exact deduplication..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/dedupe_exact.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+
+                    if result.returncode == 0:
+                        st.success("✅ Exact deduplication completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Deduplication failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
 
     with col2:
-        if st.button("Remove Near-Duplicates"):
-            st.code("python tools/dedupe_perceptual.py")
+        if st.button("🔍 Remove Near-Duplicates", use_container_width=True):
+            with st.spinner("Running perceptual deduplication..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/dedupe_perceptual.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=600
+                    )
+
+                    if result.returncode == 0:
+                        st.success("✅ Perceptual deduplication completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Deduplication failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
 
 
 def database_browser_page():
