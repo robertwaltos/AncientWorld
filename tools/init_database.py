@@ -30,7 +30,7 @@ def main():
     # Candidates table - stores discovered image URLs before download
     con.execute("""
     CREATE TABLE IF NOT EXISTS candidates (
-        id INTEGER PRIMARY KEY AUTOINC REMENT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         source TEXT NOT NULL,
         query TEXT,
         title TEXT,
@@ -103,7 +103,7 @@ def main():
     con.commit()
     con.close()
 
-    print(f"\n✓ Database initialized successfully!")
+    print(f"\n[SUCCESS] Database initialized successfully!")
     print(f"  Location: {db_path}")
     print(f"  Tables created:")
     print(f"    - candidates (discovered URLs)")
