@@ -4,7 +4,7 @@
 # For 500GB corpus, point to a dedicated drive with space
 LARGE_STORAGE_ROOT = r"D:\PythonProjects\AncientWorld\data\large"
 
-# Or use a dedicated drive (uncomment and adjust):
+# Or use a dedicated drive if available (uncomment and adjust):
 # LARGE_STORAGE_ROOT = r"E:\ancientgeo"
 # LARGE_STORAGE_ROOT = r"F:\ancient_buildings_corpus"
 

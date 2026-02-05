@@ -44,7 +44,7 @@ ITEM_PIPELINES = {
 }
 
 # Images configuration
-IMAGES_STORE = "E:/ancientgeo/images"  # Large dedicated drive for 500GB corpus
+IMAGES_STORE = "D:/PythonProjects/AncientWorld/data/large/images"  # Large dedicated drive for 500GB corpus
 IMAGES_MIN_HEIGHT = 900
 IMAGES_MIN_WIDTH = 900
 IMAGES_EXPIRES = 365  # days
