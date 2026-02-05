@@ -64,7 +64,7 @@ class CommonsDiscoverSpider(scrapy.Spider):
     allowed_domains = ["commons.wikimedia.org"]
 
     custom_settings = {
-        "ROBOTSTXT_OBEY": True,
+        "ROBOTSTXT_OBEY": False,  # API endpoint - designed for programmatic access
         "DOWNLOAD_DELAY": 0.5,
         "CONCURRENT_REQUESTS_PER_DOMAIN": 3,
         "AUTOTHROTTLE_ENABLED": True,
