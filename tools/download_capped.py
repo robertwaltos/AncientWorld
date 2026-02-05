@@ -312,7 +312,7 @@ def main():
     print(f"Total downloaded: {total_bytes / 1024**3:.2f} GB")
     print(f"Files downloaded: {stats.get('total_files_downloaded', 0):,}")
     print(f"Failed: {stats.get('total_failed', 0):,}")
-    print(f "Skipped: {stats.get('total_skipped', 0):,}")
+    print(f"Skipped: {stats.get('total_skipped', 0):,}")
 
     con.close()
     return 0
