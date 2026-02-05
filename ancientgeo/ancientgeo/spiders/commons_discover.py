@@ -71,8 +71,10 @@ class CommonsDiscoverSpider(scrapy.Spider):
         "LOG_LEVEL": "INFO",
     }
 
-    def open_spider(self, spider):
-        """Initialize database connection."""
+    def __init__(self, *args, **kwargs):
+        """Initialize spider and database connection."""
+        super().__init__(*args, **kwargs)
+
         db_path = Path(DB_PATH)
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -82,7 +84,7 @@ class CommonsDiscoverSpider(scrapy.Spider):
 
         self.logger.info(f"Connected to database: {db_path}")
 
-    def close_spider(self, spider):
+    def closed(self, reason):
         """Close database and show statistics."""
         self.con.commit()
 
