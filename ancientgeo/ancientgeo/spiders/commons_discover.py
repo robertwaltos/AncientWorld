@@ -13,8 +13,8 @@ from urllib.parse import urlencode
 
 import scrapy
 
-# Add parent to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add parent directories to path to find config
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from config.storage_config import DB_PATH
 
 SEED_QUERIES = [
