@@ -40,6 +40,13 @@ MIN_IMAGE_HEIGHT = 600
 ENABLE_PERCEPTUAL_HASH = True
 PERCEPTUAL_HASH_THRESHOLD = 5  # Hamming distance for near-duplicates
 
+# Feature extraction settings
+AUTO_EXTRACT_FEATURES = True  # Automatically extract features after downloading
+AUTO_EXTRACT_GEOMETRY = True  # Extract geometry features (fast)
+AUTO_EXTRACT_SCALE = True  # Extract scale features (fast)
+AUTO_EXTRACT_EMBEDDINGS = False  # Extract CLIP embeddings (slow, GPU recommended)
+AUTO_EXTRACT_TDA = False  # Extract TDA features (slow)
+
 
 def get_config():
     """Get current configuration as dictionary."""
@@ -53,6 +60,11 @@ def get_config():
         'MIN_IMAGE_WIDTH': MIN_IMAGE_WIDTH,
         'MIN_IMAGE_HEIGHT': MIN_IMAGE_HEIGHT,
         'PERCEPTUAL_HASH_THRESHOLD': PERCEPTUAL_HASH_THRESHOLD,
+        'AUTO_EXTRACT_FEATURES': AUTO_EXTRACT_FEATURES,
+        'AUTO_EXTRACT_GEOMETRY': AUTO_EXTRACT_GEOMETRY,
+        'AUTO_EXTRACT_SCALE': AUTO_EXTRACT_SCALE,
+        'AUTO_EXTRACT_EMBEDDINGS': AUTO_EXTRACT_EMBEDDINGS,
+        'AUTO_EXTRACT_TDA': AUTO_EXTRACT_TDA,
     }
 
 

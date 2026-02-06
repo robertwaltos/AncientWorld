@@ -1175,6 +1175,70 @@ def settings_page():
 
     st.markdown("---")
 
+    # Feature Extraction Configuration
+    st.subheader("🔬 Automatic Feature Extraction")
+
+    with st.form("extraction_form"):
+        st.markdown("Configure which features to extract automatically after downloading new images.")
+
+        auto_extract = st.checkbox(
+            "Enable Automatic Feature Extraction",
+            value=config['AUTO_EXTRACT_FEATURES'],
+            help="Run feature extraction after each download batch completes"
+        )
+
+        st.markdown("**Feature Types:**")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            auto_geometry = st.checkbox(
+                "Geometry Features (fast)",
+                value=config['AUTO_EXTRACT_GEOMETRY'],
+                help="Lines, circles, symmetry, radialness, orientation",
+                disabled=not auto_extract
+            )
+
+            auto_scale = st.checkbox(
+                "Scale Features (fast)",
+                value=config['AUTO_EXTRACT_SCALE'],
+                help="Door/window aspect ratios and opening counts",
+                disabled=not auto_extract
+            )
+
+        with col2:
+            auto_embeddings = st.checkbox(
+                "CLIP Embeddings (slow, GPU recommended)",
+                value=config['AUTO_EXTRACT_EMBEDDINGS'],
+                help="Semantic embeddings for image search and clustering",
+                disabled=not auto_extract
+            )
+
+            auto_tda = st.checkbox(
+                "TDA Features (slow)",
+                value=config['AUTO_EXTRACT_TDA'],
+                help="Topological data analysis (persistent homology)",
+                disabled=not auto_extract
+            )
+
+        extraction_submit = st.form_submit_button("💾 Save Extraction Settings", use_container_width=True)
+
+        if extraction_submit:
+            try:
+                update_config(
+                    AUTO_EXTRACT_FEATURES=auto_extract,
+                    AUTO_EXTRACT_GEOMETRY=auto_geometry,
+                    AUTO_EXTRACT_SCALE=auto_scale,
+                    AUTO_EXTRACT_EMBEDDINGS=auto_embeddings,
+                    AUTO_EXTRACT_TDA=auto_tda
+                )
+                st.success("✅ Feature extraction settings saved successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error saving settings: {e}")
+
+    st.markdown("---")
+
     # Current Configuration Summary
     st.subheader("📋 Current Configuration")
 
@@ -1197,6 +1261,21 @@ def settings_page():
         st.code(f"Timeout: {storage_config.REQUEST_TIMEOUT}s")
         st.code(f"Max Retries: {storage_config.MAX_RETRIES}")
         st.code(f"Perceptual Hash Threshold: {storage_config.PERCEPTUAL_HASH_THRESHOLD}")
+
+    st.markdown("**Auto-Extraction:**")
+    extraction_status = "✅ Enabled" if storage_config.AUTO_EXTRACT_FEATURES else "❌ Disabled"
+    st.code(f"Auto Extract: {extraction_status}")
+    if storage_config.AUTO_EXTRACT_FEATURES:
+        features = []
+        if storage_config.AUTO_EXTRACT_GEOMETRY:
+            features.append("Geometry")
+        if storage_config.AUTO_EXTRACT_SCALE:
+            features.append("Scale")
+        if storage_config.AUTO_EXTRACT_EMBEDDINGS:
+            features.append("Embeddings")
+        if storage_config.AUTO_EXTRACT_TDA:
+            features.append("TDA")
+        st.code(f"  Features: {', '.join(features) if features else 'None'}")
 
     st.info("💡 All settings are automatically applied. Restart any running download processes to use new settings.")
 

@@ -35,6 +35,11 @@ from config.storage_config import (
     SLEEP_BETWEEN_DOWNLOADS,
     REQUEST_TIMEOUT,
     MAX_RETRIES,
+    AUTO_EXTRACT_FEATURES,
+    AUTO_EXTRACT_GEOMETRY,
+    AUTO_EXTRACT_SCALE,
+    AUTO_EXTRACT_EMBEDDINGS,
+    AUTO_EXTRACT_TDA,
 )
 
 USER_AGENT = "AncientWorld/1.0 (research; https://github.com/robertwaltos/AncientWorld)"
@@ -310,6 +315,24 @@ def main():
 
             if success:
                 time.sleep(SLEEP_BETWEEN_DOWNLOADS)
+
+        # Auto-extract features after batch completes (if enabled)
+        if AUTO_EXTRACT_FEATURES:
+            try:
+                from tools.extract_all_features import main as extract_features
+                print("\n" + "="*60)
+                print("Running feature extraction on new images...")
+                print("="*60)
+                extract_features(
+                    geometry=AUTO_EXTRACT_GEOMETRY,
+                    scale=AUTO_EXTRACT_SCALE,
+                    embeddings=AUTO_EXTRACT_EMBEDDINGS,
+                    tda=AUTO_EXTRACT_TDA,
+                    verbose=True
+                )
+            except Exception as e:
+                print(f"⚠️  Feature extraction failed: {e}")
+                print("Continuing with downloads...")
 
     # Final stats
     print("\n" + "="*60)
