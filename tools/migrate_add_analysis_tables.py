@@ -67,6 +67,24 @@ def main():
     );
     """)
 
+    # Add missing columns if table already exists (migration)
+    try:
+        cur.execute("ALTER TABLE image_features ADD COLUMN opening_count INTEGER")
+    except:
+        pass  # Column already exists
+    try:
+        cur.execute("ALTER TABLE image_features ADD COLUMN door_window_aspect_mean REAL")
+    except:
+        pass
+    try:
+        cur.execute("ALTER TABLE image_features ADD COLUMN door_window_aspect_median REAL")
+    except:
+        pass
+    try:
+        cur.execute("ALTER TABLE image_features ADD COLUMN door_window_aspect_p90 REAL")
+    except:
+        pass
+
     # CLIP embeddings (float32 bytes)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS embeddings (

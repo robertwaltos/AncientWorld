@@ -864,6 +864,8 @@ def analysis_page():
     # Feature extraction tools
     st.subheader("🛠️ Feature Extraction Tools")
 
+    st.info("💡 Click buttons below to extract features from downloaded images. Results appear automatically below.")
+
     col_a, col_b, col_c, col_d = st.columns(4)
 
     with col_a:
@@ -878,14 +880,15 @@ def analysis_page():
                         cwd=str(ROOT)
                     )
                     if result.returncode == 0:
-                        st.success(result.stdout)
+                        st.success(f"✅ {result.stdout.strip()}")
+                        st.balloons()
                         st.rerun()
                     else:
-                        st.error(f"Error: {result.stderr}")
+                        st.error(f"❌ Error: {result.stderr}")
                 except subprocess.TimeoutExpired:
-                    st.error("Timeout after 5 minutes")
+                    st.error("⏱️ Timeout after 5 minutes")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"❌ Error: {e}")
 
     with col_b:
         if st.button("📐 Extract Scale", use_container_width=True, help="Analyze door/window aspect ratios"):
@@ -899,14 +902,15 @@ def analysis_page():
                         cwd=str(ROOT)
                     )
                     if result.returncode == 0:
-                        st.success(result.stdout)
+                        st.success(f"✅ {result.stdout.strip()}")
+                        st.balloons()
                         st.rerun()
                     else:
-                        st.error(f"Error: {result.stderr}")
+                        st.error(f"❌ Error: {result.stderr}")
                 except subprocess.TimeoutExpired:
-                    st.error("Timeout after 5 minutes")
+                    st.error("⏱️ Timeout after 5 minutes")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"❌ Error: {e}")
 
     with col_c:
         if st.button("🖼️ CLIP Embeddings", use_container_width=True, help="Generate semantic embeddings (optional, requires GPU)"):
@@ -920,14 +924,15 @@ def analysis_page():
                         cwd=str(ROOT)
                     )
                     if result.returncode == 0:
-                        st.success(result.stdout)
+                        st.success(f"✅ {result.stdout.strip()}")
+                        st.balloons()
                         st.rerun()
                     else:
-                        st.error(f"Error: {result.stderr}")
+                        st.error(f"❌ Error: {result.stderr}")
                 except subprocess.TimeoutExpired:
-                    st.error("Timeout after 30 minutes")
+                    st.error("⏱️ Timeout after 30 minutes")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"❌ Error: {e}")
 
     with col_d:
         if st.button("🔬 TDA Features", use_container_width=True, help="Topological data analysis (optional, experimental)"):
@@ -941,25 +946,22 @@ def analysis_page():
                         cwd=str(ROOT)
                     )
                     if result.returncode == 0:
-                        st.success(result.stdout)
+                        st.success(f"✅ {result.stdout.strip()}")
+                        st.balloons()
                         st.rerun()
                     else:
-                        st.error(f"Error: {result.stderr}")
+                        st.error(f"❌ Error: {result.stderr}")
                 except subprocess.TimeoutExpired:
-                    st.error("Timeout after 10 minutes")
+                    st.error("⏱️ Timeout after 10 minutes")
                 except Exception as e:
-                    st.error(f"Error: {e}")
-
-    # Show guidance if no features
-    if stats['downloaded'][0] == 0:
-        st.info("💡 Download some images first from the Download page")
-        return
-
-    if stats['featurized'][0] == 0:
-        st.info("💡 Click '🔷 Extract Geometry' above to start analyzing your images")
-        return
+                    st.error(f"❌ Error: {e}")
 
     st.markdown("---")
+
+    # Show guidance if no downloaded images
+    if stats['downloaded'][0] == 0:
+        st.warning("💡 Download some images first from the Download page, then come back here to analyze them")
+        return
 
     # Load feature data
     feats = pd.read_sql_query("""
@@ -973,8 +975,10 @@ def analysis_page():
     """, con)
 
     if feats.empty:
-        st.warning("No feature data available")
+        st.info("📊 **No feature data yet** - Click '🔷 Extract Geometry' above to start analyzing your images")
         return
+
+    st.success(f"✅ **{len(feats):,} images** have been analyzed. Results below:")
 
     # Distributions
     st.subheader("Feature Distributions")

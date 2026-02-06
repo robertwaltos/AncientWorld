@@ -1,7 +1,9 @@
 import sqlite3
+import sys
 from pathlib import Path
 import cv2
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.storage_config import DB_PATH
 from src.analysis.tda import extract_tda_features
 
