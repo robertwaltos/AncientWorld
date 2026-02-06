@@ -1,0 +1,16 @@
+# CloudGPT analysis add-ons
+opencv-python
+numpy
+pillow
+pandas
+scipy
+scikit-image
+
+# CLIP embeddings (optional)
+torch
+transformers
+
+# TDA (optional)
+ripser
+persim
+# gudhi  # optional alternative

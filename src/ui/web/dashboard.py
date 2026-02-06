@@ -822,20 +822,190 @@ def image_viewer_page():
 
 
 def analysis_page():
-    """Analysis tools page."""
-    st.title("🔬 Analysis Tools")
+    """Analysis page with geometry and scale features."""
+    st.title("🔬 Analysis")
 
-    st.subheader("Geometry Detection")
-    st.markdown("Detect circles, lines, and geometric features")
+    # Get database connection
+    con = get_db_connection()
+    if not con:
+        st.error("Database not initialized")
+        return
 
-    uploaded = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
+    # Stats overview
+    st.subheader("Analysis Status")
+    stats = pd.read_sql_query("""
+      SELECT
+        (SELECT COUNT(*) FROM candidates WHERE status='downloaded') AS downloaded,
+        (SELECT COUNT(*) FROM image_features) AS featurized,
+        (SELECT COUNT(*) FROM embeddings) AS embedded,
+        (SELECT COUNT(*) FROM tda_features) AS tda_done
+    """, con)
 
-    if uploaded:
-        img = Image.open(uploaded)
-        st.image(img, caption="Uploaded Image", use_container_width=True)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Downloaded Images", f"{stats['downloaded'][0]:,}")
+    with col2:
+        st.metric("Geometry Features", f"{stats['featurized'][0]:,}")
+    with col3:
+        st.metric("CLIP Embeddings", f"{stats['embedded'][0]:,}")
+    with col4:
+        st.metric("TDA Features", f"{stats['tda_done'][0]:,}")
 
-        if st.button("Run Geometry Analysis"):
-            st.info("Analysis integration coming soon!")
+    st.markdown("---")
+
+    # Feature extraction tools
+    st.subheader("🛠️ Feature Extraction Tools")
+
+    col_a, col_b, col_c, col_d = st.columns(4)
+
+    with col_a:
+        if st.button("🔷 Extract Geometry", use_container_width=True, help="Extract lines, circles, symmetry features"):
+            with st.spinner("Extracting geometry features..."):
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "tools/extract_geometry_features.py"],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                        cwd=str(ROOT)
+                    )
+                    if result.returncode == 0:
+                        st.success(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"Error: {result.stderr}")
+                except subprocess.TimeoutExpired:
+                    st.error("Timeout after 5 minutes")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    with col_b:
+        if st.button("📐 Extract Scale", use_container_width=True, help="Analyze door/window aspect ratios"):
+            with st.spinner("Extracting scale features..."):
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "tools/extract_scale_features.py"],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                        cwd=str(ROOT)
+                    )
+                    if result.returncode == 0:
+                        st.success(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"Error: {result.stderr}")
+                except subprocess.TimeoutExpired:
+                    st.error("Timeout after 5 minutes")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    with col_c:
+        if st.button("🖼️ CLIP Embeddings", use_container_width=True, help="Generate semantic embeddings (optional, requires GPU)"):
+            with st.spinner("Generating CLIP embeddings... (this may take a while)"):
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "tools/clip_embed_images.py"],
+                        capture_output=True,
+                        text=True,
+                        timeout=1800,  # 30 min
+                        cwd=str(ROOT)
+                    )
+                    if result.returncode == 0:
+                        st.success(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"Error: {result.stderr}")
+                except subprocess.TimeoutExpired:
+                    st.error("Timeout after 30 minutes")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    with col_d:
+        if st.button("🔬 TDA Features", use_container_width=True, help="Topological data analysis (optional, experimental)"):
+            with st.spinner("Extracting TDA features..."):
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "tools/extract_tda_features.py"],
+                        capture_output=True,
+                        text=True,
+                        timeout=600,  # 10 min
+                        cwd=str(ROOT)
+                    )
+                    if result.returncode == 0:
+                        st.success(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"Error: {result.stderr}")
+                except subprocess.TimeoutExpired:
+                    st.error("Timeout after 10 minutes")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    # Show guidance if no features
+    if stats['downloaded'][0] == 0:
+        st.info("💡 Download some images first from the Download page")
+        return
+
+    if stats['featurized'][0] == 0:
+        st.info("💡 Click '🔷 Extract Geometry' above to start analyzing your images")
+        return
+
+    st.markdown("---")
+
+    # Load feature data
+    feats = pd.read_sql_query("""
+      SELECT f.candidate_id, f.edge_density, f.line_count, f.radialness,
+             f.opening_count, f.door_window_aspect_mean, f.door_window_aspect_p90,
+             c.local_path, c.page_url, c.source, c.title
+      FROM image_features f
+      JOIN candidates c ON c.id = f.candidate_id
+      ORDER BY f.candidate_id DESC
+      LIMIT 5000
+    """, con)
+
+    if feats.empty:
+        st.warning("No feature data available")
+        return
+
+    # Distributions
+    st.subheader("Feature Distributions")
+
+    tab1, tab2, tab3 = st.tabs(["Radialness", "Edge Density", "Lines"])
+
+    with tab1:
+        st.write("**Radialness** - Measures circular/radial patterns")
+        st.bar_chart(feats["radialness"].value_counts(bins=20, sort=False))
+        st.caption(f"Mean: {feats['radialness'].mean():.3f}, Median: {feats['radialness'].median():.3f}")
+
+    with tab2:
+        st.write("**Edge Density** - Measures detail/complexity")
+        st.bar_chart(feats["edge_density"].value_counts(bins=20, sort=False))
+        st.caption(f"Mean: {feats['edge_density'].mean():.3f}, Median: {feats['edge_density'].median():.3f}")
+
+    with tab3:
+        st.write("**Line Count** - Number of detected straight lines")
+        st.bar_chart(feats["line_count"].value_counts(bins=20, sort=False))
+        st.caption(f"Mean: {feats['line_count'].mean():.1f}, Median: {feats['line_count'].median():.1f}")
+
+    st.markdown("---")
+
+    # Most radial candidates
+    st.subheader("🎯 Most Radial Candidates")
+    st.caption("Images with strong circular/radial patterns (rose windows, domes, etc.)")
+
+    top = feats.sort_values("radialness", ascending=False).head(24)
+    cols = st.columns(4)
+
+    for i, row in enumerate(top.itertuples()):
+        with cols[i % 4]:
+            path = Path(row.local_path)
+            if path.exists():
+                st.image(str(path), caption=f"radial={row.radialness:.2f}", use_container_width=True)
+                if row.title:
+                    st.caption(row.title[:50])
+                if row.page_url:
+                    st.link_button("View Source", row.page_url, use_container_width=True)
 
 
 def settings_page():

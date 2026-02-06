@@ -109,6 +109,44 @@ QUERIES = [
 
     # Historical documentation
     "historical street photography",
+
+   # Scale and proportions (CloudGPT additions)
+    "oversized doorways",
+    "monumental doorways",
+    "tall doorways",
+    "high ceiling interiors",
+    "floor to ceiling windows",
+    "towering windows",
+    "architectural scale",
+    "nonstandard proportions",
+    "monumental scale architecture",
+
+    # Interior architecture
+    "grand staircases",
+    "monumental staircases",
+    "stair riser height",
+    "historic staircases",
+    "primary staircases",
+    "secondary staircases",
+    "servant staircases",
+    "vaulted interiors",
+    "monumental halls",
+
+    # Building modifications
+    "building modification records",
+    "historic building alterations",
+    "lowered doorways",
+    "false ceilings",
+    "drop ceilings",
+    "window resizing",
+    "architectural retrofitting",
+
+    # Furniture scale
+    "oversized furniture",
+    "historic furniture scale",
+    "antique furniture dimensions",
+    "19th century furniture",
+    "museum furniture collections",
 ]
 
 

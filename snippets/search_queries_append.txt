@@ -1,0 +1,44 @@
+# Paste into config/search_queries.py (append-only)
+SCALE_AND_PROPORTIONS = [
+    "oversized doorways",
+    "monumental doorways",
+    "tall doorways",
+    "high ceiling interiors",
+    "floor to ceiling windows",
+    "towering windows",
+    "architectural scale",
+    "nonstandard proportions",
+    "monumental scale architecture",
+]
+
+INTERIOR_ARCHITECTURE = [
+    "grand staircases",
+    "monumental staircases",
+    "stair riser height",
+    "historic staircases",
+    "primary staircases",
+    "secondary staircases",
+    "servant staircases",
+    "vaulted interiors",
+    "monumental halls",
+]
+
+BUILDING_MODIFICATIONS = [
+    "building modification records",
+    "historic building alterations",
+    "lowered doorways",
+    "false ceilings",
+    "drop ceilings",
+    "window resizing",
+    "architectural retrofitting",
+]
+
+FURNITURE_SCALE = [
+    "oversized furniture",
+    "historic furniture scale",
+    "antique furniture dimensions",
+    "19th century furniture",
+    "museum furniture collections",
+]
+
+QUERIES = QUERIES + SCALE_AND_PROPORTIONS + INTERIOR_ARCHITECTURE + BUILDING_MODIFICATIONS + FURNITURE_SCALE
