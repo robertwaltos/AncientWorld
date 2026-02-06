@@ -234,39 +234,62 @@ def download_from_source(domain: str, batch_size: int = 50, max_images: int = 10
                             con.commit()
                             break
 
-                        # Check for duplicates
+                        # Check for duplicates using perceptual hash
                         if ENABLE_PERCEPTUAL_HASH:
                             phash = compute_phash(img)
+
+                            # Query existing images with same phash
                             existing = con.execute(
-                                "SELECT id, local_path FROM candidates WHERE phash=? AND status='downloaded' AND id != ?",
-                                (phash, cid)
+                                "SELECT id, phash FROM candidates WHERE phash IS NOT NULL AND status='downloaded' AND id != ?",
+                                (cid,)
                             ).fetchall()
 
                             # Check Hamming distance for near-duplicates
-                            for eid, epath in existing:
-                                dist = hamming_distance(phash, phash)  # Should compare with stored hash
-                                if dist <= PERCEPTUAL_HASH_THRESHOLD:
-                                    temp_path.unlink()
-                                    mark_candidate(con, cid, "duplicate",
-                                                 error=f"Duplicate of candidate {eid}")
-                                    increment_stat(con, "total_duplicates")
-                                    con.commit()
-                                    success = True
-                                    break
+                            for eid, existing_phash_str in existing:
+                                try:
+                                    # Convert stored phash (might be TEXT) to int
+                                    existing_phash = int(existing_phash_str) if existing_phash_str else None
+                                    if existing_phash is None:
+                                        continue
+
+                                    dist = hamming_distance(phash, existing_phash)
+                                    if dist <= PERCEPTUAL_HASH_THRESHOLD:
+                                        temp_path.unlink()
+                                        mark_candidate(con, cid, "duplicate",
+                                                     error=f"Duplicate of candidate {eid} (distance={dist})")
+                                        increment_stat(con, "total_duplicates")
+                                        con.commit()
+                                        success = True
+                                        break
+                                except (ValueError, TypeError) as e:
+                                    # Skip if phash conversion fails
+                                    continue
 
                             if success:
                                 break
+
+                            # Store the phash for this image (convert to string for TEXT column)
+                            phash_str = str(phash)
 
                         # Move to final location
                         temp_path.rename(dest)
                         size = dest.stat().st_size
                         sha256 = compute_sha256(dest)
 
-                        mark_candidate(con, cid, "downloaded",
-                                     local_path=str(dest),
-                                     downloaded_bytes=size,
-                                     sha256_local=sha256,
-                                     width=w, height=h)
+                        # Build kwargs for mark_candidate
+                        update_kwargs = {
+                            "local_path": str(dest),
+                            "downloaded_bytes": size,
+                            "sha256_local": sha256,
+                            "width": w,
+                            "height": h
+                        }
+
+                        # Add phash if it was computed
+                        if ENABLE_PERCEPTUAL_HASH:
+                            update_kwargs["phash"] = phash_str
+
+                        mark_candidate(con, cid, "downloaded", **update_kwargs)
                         increment_stat(con, "total_files_downloaded")
                         con.commit()
 
