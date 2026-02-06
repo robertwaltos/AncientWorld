@@ -24,7 +24,10 @@ from config.storage_config import (
     IMAGES_ROOT,
     MAX_STORAGE_GB,
     MAX_STORAGE_BYTES,
-    LARGE_STORAGE_ROOT
+    LARGE_STORAGE_ROOT,
+    get_config,
+    update_config,
+    reload_config
 )
 
 # Page configuration
@@ -114,6 +117,11 @@ def dashboard_page():
     st.title("🏛️ AncientWorld Dashboard")
     st.markdown("Comprehensive ancient buildings image analysis platform")
 
+    # Reload config for fresh values
+    reload_config()
+    from config import storage_config
+    max_storage_gb = storage_config.MAX_STORAGE_GB
+
     data = get_stats()
     if not data:
         st.error("⚠️ Database not initialized. Run init_database.py first.")
@@ -128,7 +136,7 @@ def dashboard_page():
     with col1:
         total_gb = stats.get("total_downloaded_bytes", 0) / 1024**3
         st.metric("Downloaded", f"{total_gb:.1f} GB",
-                 f"{(total_gb/MAX_STORAGE_GB)*100:.1f}% of cap")
+                 f"{(total_gb/max_storage_gb)*100:.1f}% of cap")
 
     with col2:
         files = stats.get("total_files_downloaded", 0)
@@ -150,14 +158,14 @@ def dashboard_page():
         mode="gauge+number",
         value=used_gb,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Storage (GB) / {MAX_STORAGE_GB} GB Cap"},
+        title={'text': f"Storage (GB) / {max_storage_gb:,} GB Cap"},
         gauge={
-            'axis': {'range': [None, MAX_STORAGE_GB]},
+            'axis': {'range': [None, max_storage_gb]},
             'bar': {'color': "darkblue"},
             'steps': [
-                {'range': [0, MAX_STORAGE_GB * 0.7], 'color': "lightgray"},
-                {'range': [MAX_STORAGE_GB * 0.7, MAX_STORAGE_GB * 0.9], 'color': "yellow"},
-                {'range': [MAX_STORAGE_GB * 0.9, MAX_STORAGE_GB], 'color': "red"}
+                {'range': [0, max_storage_gb * 0.7], 'color': "lightgray"},
+                {'range': [max_storage_gb * 0.7, max_storage_gb * 0.9], 'color': "yellow"},
+                {'range': [max_storage_gb * 0.9, max_storage_gb], 'color': "red"}
             ],
         }
     ))
@@ -168,7 +176,7 @@ def dashboard_page():
     st.subheader("📊 Storage Requirements Estimate")
 
     # Show current storage cap prominently
-    st.info(f"💾 **Current Storage Cap:** {MAX_STORAGE_GB:,} GB ({MAX_STORAGE_GB/1024:.1f} TB)")
+    st.info(f"💾 **Current Storage Cap:** {max_storage_gb:,} GB ({max_storage_gb/1024:.1f} TB)")
 
     con = get_db_connection()
     if con:
@@ -211,19 +219,19 @@ def dashboard_page():
             st.metric(
                 "Total Estimated (Current + Pending)",
                 f"{total_estimated_gb:.1f} GB",
-                help=f"{(total_estimated_gb/MAX_STORAGE_GB)*100:.1f}% of {MAX_STORAGE_GB} GB cap"
+                help=f"{(total_estimated_gb/max_storage_gb)*100:.1f}% of {max_storage_gb:,} GB cap"
             )
 
         # Warning if exceeds cap
-        if total_estimated_gb > MAX_STORAGE_GB:
-            excess_gb = total_estimated_gb - MAX_STORAGE_GB
+        if total_estimated_gb > max_storage_gb:
+            excess_gb = total_estimated_gb - max_storage_gb
             st.warning(
                 f"⚠️ **Storage Alert:** Estimated total ({total_estimated_gb:.1f} GB) "
-                f"exceeds current cap ({MAX_STORAGE_GB} GB) by {excess_gb:.1f} GB. "
-                f"Consider increasing storage allocation in config/storage_config.py"
+                f"exceeds current cap ({max_storage_gb:,} GB) by {excess_gb:.1f} GB. "
+                f"Go to Settings page to increase storage allocation."
             )
         else:
-            remaining_gb = MAX_STORAGE_GB - total_estimated_gb
+            remaining_gb = max_storage_gb - total_estimated_gb
             st.success(
                 f"✅ **Storage OK:** {remaining_gb:.1f} GB will remain available "
                 f"after downloading all pending images."
@@ -1009,16 +1017,184 @@ def analysis_page():
 
 
 def settings_page():
-    """Settings page."""
+    """Settings page - fully GUI-driven configuration."""
     st.title("⚙️ Settings")
 
-    st.subheader("Storage Configuration")
-    st.code(f"Storage root: {LARGE_STORAGE_ROOT}")
-    st.code(f"Database: {DB_PATH}")
-    st.code(f"Images: {IMAGES_ROOT}")
-    st.code(f"Max storage: {MAX_STORAGE_GB} GB")
+    # Reload config to get fresh values
+    reload_config()
+    config = get_config()
 
-    st.info("💡 To change settings, edit config/storage_config.py")
+    st.markdown("Configure all application settings from this page. Changes are saved immediately.")
+
+    st.markdown("---")
+
+    # Storage Configuration
+    st.subheader("💾 Storage Configuration")
+
+    with st.form("storage_form"):
+        storage_root = st.text_input(
+            "Storage Root Directory",
+            value=config['LARGE_STORAGE_ROOT'],
+            help="Base directory for all data (database, images, logs)"
+        )
+
+        max_storage_gb = st.number_input(
+            "Maximum Storage (GB)",
+            min_value=100,
+            max_value=10000,
+            value=config['MAX_STORAGE_GB'],
+            step=100,
+            help="Maximum disk space to use (current: 2000 GB = 2 TB)"
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            min_width = st.number_input(
+                "Minimum Image Width (px)",
+                min_value=300,
+                max_value=2000,
+                value=config['MIN_IMAGE_WIDTH'],
+                step=50,
+                help="Skip images narrower than this"
+            )
+
+        with col2:
+            min_height = st.number_input(
+                "Minimum Image Height (px)",
+                min_value=300,
+                max_value=2000,
+                value=config['MIN_IMAGE_HEIGHT'],
+                step=50,
+                help="Skip images shorter than this"
+            )
+
+        storage_submit = st.form_submit_button("💾 Save Storage Settings", use_container_width=True)
+
+        if storage_submit:
+            try:
+                update_config(
+                    LARGE_STORAGE_ROOT=storage_root,
+                    MAX_STORAGE_GB=max_storage_gb,
+                    MIN_IMAGE_WIDTH=min_width,
+                    MIN_IMAGE_HEIGHT=min_height
+                )
+                st.success("✅ Storage settings saved successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error saving settings: {e}")
+
+    st.markdown("---")
+
+    # Download Configuration
+    st.subheader("⬇️ Download Configuration")
+
+    with st.form("download_form"):
+        batch_size = st.number_input(
+            "Batch Size",
+            min_value=10,
+            max_value=1000,
+            value=config['BATCH_SIZE'],
+            step=10,
+            help="Number of candidates to process per batch"
+        )
+
+        sleep_time = st.number_input(
+            "Sleep Between Downloads (seconds)",
+            min_value=0.1,
+            max_value=10.0,
+            value=config['SLEEP_BETWEEN_DOWNLOADS'],
+            step=0.1,
+            format="%.1f",
+            help="Delay between downloads to respect rate limits"
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            timeout = st.number_input(
+                "Request Timeout (seconds)",
+                min_value=10,
+                max_value=300,
+                value=config['REQUEST_TIMEOUT'],
+                step=10,
+                help="Maximum time to wait for a response"
+            )
+
+        with col2:
+            max_retries = st.number_input(
+                "Maximum Retries",
+                min_value=1,
+                max_value=10,
+                value=config['MAX_RETRIES'],
+                step=1,
+                help="Number of retry attempts for failed downloads"
+            )
+
+        download_submit = st.form_submit_button("💾 Save Download Settings", use_container_width=True)
+
+        if download_submit:
+            try:
+                update_config(
+                    BATCH_SIZE=batch_size,
+                    SLEEP_BETWEEN_DOWNLOADS=sleep_time,
+                    REQUEST_TIMEOUT=timeout,
+                    MAX_RETRIES=max_retries
+                )
+                st.success("✅ Download settings saved successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error saving settings: {e}")
+
+    st.markdown("---")
+
+    # Deduplication Configuration
+    st.subheader("🔍 Deduplication Configuration")
+
+    with st.form("dedup_form"):
+        perceptual_threshold = st.slider(
+            "Perceptual Hash Threshold",
+            min_value=0,
+            max_value=20,
+            value=config['PERCEPTUAL_HASH_THRESHOLD'],
+            step=1,
+            help="Hamming distance for near-duplicate detection (lower = stricter)"
+        )
+
+        dedup_submit = st.form_submit_button("💾 Save Deduplication Settings", use_container_width=True)
+
+        if dedup_submit:
+            try:
+                update_config(PERCEPTUAL_HASH_THRESHOLD=perceptual_threshold)
+                st.success("✅ Deduplication settings saved successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error saving settings: {e}")
+
+    st.markdown("---")
+
+    # Current Configuration Summary
+    st.subheader("📋 Current Configuration")
+
+    reload_config()
+    from config import storage_config
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.code(f"Storage Root: {storage_config.LARGE_STORAGE_ROOT}")
+        st.code(f"Database: {storage_config.DB_PATH}")
+        st.code(f"Images: {storage_config.IMAGES_ROOT}")
+        st.code(f"Max Storage: {storage_config.MAX_STORAGE_GB:,} GB ({storage_config.MAX_STORAGE_GB/1024:.1f} TB)")
+        st.code(f"Batch Size: {storage_config.BATCH_SIZE}")
+
+    with col2:
+        st.code(f"Min Width: {storage_config.MIN_IMAGE_WIDTH} px")
+        st.code(f"Min Height: {storage_config.MIN_IMAGE_HEIGHT} px")
+        st.code(f"Sleep Time: {storage_config.SLEEP_BETWEEN_DOWNLOADS}s")
+        st.code(f"Timeout: {storage_config.REQUEST_TIMEOUT}s")
+        st.code(f"Max Retries: {storage_config.MAX_RETRIES}")
+        st.code(f"Perceptual Hash Threshold: {storage_config.PERCEPTUAL_HASH_THRESHOLD}")
+
+    st.info("💡 All settings are automatically applied. Restart any running download processes to use new settings.")
 
 
 def main():
