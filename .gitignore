@@ -60,6 +60,9 @@ config/secrets.yaml
 tmp/
 temp/
 *.tmp
+tmpclaude-*-cwd
+ancientgeo/tmpclaude-*-cwd
+nul
 
 # OS
 Thumbs.db
