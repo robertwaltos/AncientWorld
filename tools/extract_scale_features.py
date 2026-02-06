@@ -19,13 +19,13 @@ def main(limit: int = 1000):
     cur = con.cursor()
 
     rows = cur.execute("""
-      SELECT id, local_path
-      FROM candidates
-      WHERE status='downloaded'
-        AND local_path IS NOT NULL
-        AND id IN (SELECT candidate_id FROM image_features)
-        AND (opening_count IS NULL OR opening_count = 0)
-      ORDER BY id ASC
+      SELECT c.id, c.local_path
+      FROM candidates c
+      JOIN image_features f ON f.candidate_id = c.id
+      WHERE c.status='downloaded'
+        AND c.local_path IS NOT NULL
+        AND (f.opening_count IS NULL OR f.opening_count = 0)
+      ORDER BY c.id ASC
       LIMIT ?
     """, (limit,)).fetchall()
 
