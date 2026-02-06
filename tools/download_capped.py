@@ -105,8 +105,8 @@ def pick_batch(con, batch_size: int):
         SELECT id, image_url, mime, sha1, width, height
         FROM candidates
         WHERE status='pending'
-        AND (width IS NULL OR width >= 900)
-        AND (height IS NULL OR height >= 900)
+        AND (width IS NULL OR width >= 600)
+        AND (height IS NULL OR height >= 600)
         ORDER BY width DESC, height DESC
         LIMIT ?
     """, (batch_size,)).fetchall()
@@ -289,16 +289,24 @@ def main():
                     break
 
                 except Exception as e:
+                    error_msg = str(e)
+                    # Check for rate limiting
+                    if "429" in error_msg or "too many requests" in error_msg.lower():
+                        print(f"Rate limited! Waiting 60 seconds before retry...")
+                        time.sleep(60)
+
                     if attempt < MAX_RETRIES - 1:
-                        time.sleep(2 ** attempt)  # Exponential backoff
+                        wait_time = 2 ** attempt
+                        print(f"Retry {attempt + 1}/{MAX_RETRIES} after {wait_time}s...")
+                        time.sleep(wait_time)  # Exponential backoff
                     else:
                         mark_candidate(
                             con, cid, "failed",
-                            error=str(e)
+                            error=error_msg[:500]  # Limit error message length
                         )
                         increment_stat(con, "total_failed")
                         con.commit()
-                        print(f"Failed: {url[:80]}... ({e})")
+                        print(f"Failed: {url[:80]}... ({error_msg[:100]})")
 
             if success:
                 time.sleep(SLEEP_BETWEEN_DOWNLOADS)

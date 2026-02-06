@@ -1,12 +1,10 @@
 # Large Dataset Storage Configuration
 
-# By default, use project data directory
-# For 500GB corpus, point to a dedicated drive with space
-LARGE_STORAGE_ROOT = r"D:\PythonProjects\AncientWorld\data\large"
+# Storage location for 1TB corpus
+LARGE_STORAGE_ROOT = r"F:\AncientWorld"
 
-# Or use a dedicated drive if available (uncomment and adjust):
-# LARGE_STORAGE_ROOT = r"E:\ancientgeo"
-# LARGE_STORAGE_ROOT = r"F:\ancient_buildings_corpus"
+# Or use project directory (uncomment if needed):
+# LARGE_STORAGE_ROOT = r"D:\PythonProjects\AncientWorld\data\large"
 
 # Database location
 DB_PATH = f"{LARGE_STORAGE_ROOT}\\db\\assets.sqlite3"
@@ -21,18 +19,18 @@ LOGS_ROOT = f"{LARGE_STORAGE_ROOT}\\logs"
 CACHE_ROOT = f"{LARGE_STORAGE_ROOT}\\cache"
 
 #Download caps
-MAX_STORAGE_GB = 500
+MAX_STORAGE_GB = 2000
 MAX_STORAGE_BYTES = MAX_STORAGE_GB * 1024 ** 3
 
 # Download settings
 BATCH_SIZE = 200
-SLEEP_BETWEEN_DOWNLOADS = 0.1
+SLEEP_BETWEEN_DOWNLOADS = 1.0  # Increased from 0.1 to 1.0 second to respect rate limits
 REQUEST_TIMEOUT = 60
 MAX_RETRIES = 3
 
 # Quality gates
-MIN_IMAGE_WIDTH = 900
-MIN_IMAGE_HEIGHT = 900
+MIN_IMAGE_WIDTH = 600
+MIN_IMAGE_HEIGHT = 600
 
 # Deduplication settings
 ENABLE_PERCEPTUAL_HASH = True

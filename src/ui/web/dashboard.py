@@ -36,7 +36,7 @@ st.set_page_config(
 )
 
 
-@st.cache_resource
+@st.cache_resource(ttl=60)  # Cache for 60 seconds to pick up config changes
 def get_db_connection():
     """Get cached database connection."""
     db_path = Path(DB_PATH)
@@ -163,6 +163,72 @@ def dashboard_page():
     ))
     st.plotly_chart(fig, use_container_width=True)
 
+    # Storage requirement estimation
+    st.markdown("---")
+    st.subheader("📊 Storage Requirements Estimate")
+
+    # Show current storage cap prominently
+    st.info(f"💾 **Current Storage Cap:** {MAX_STORAGE_GB:,} GB ({MAX_STORAGE_GB/1024:.1f} TB)")
+
+    con = get_db_connection()
+    if con:
+        # Count pending images
+        pending_count = con.execute(
+            "SELECT COUNT(*) FROM candidates WHERE status='pending'"
+        ).fetchone()[0]
+
+        # Average image size estimation (based on downloaded samples)
+        avg_size_result = con.execute("""
+            SELECT AVG(downloaded_bytes)
+            FROM candidates
+            WHERE status='downloaded' AND downloaded_bytes > 0
+        """).fetchone()
+
+        avg_size_mb = (avg_size_result[0] / 1024**2) if avg_size_result[0] else 2.5  # Default 2.5MB
+
+        # Calculate total estimated storage
+        estimated_pending_gb = (pending_count * avg_size_mb) / 1024
+        current_gb = stats.get("total_downloaded_bytes", 0) / 1024**3
+        total_estimated_gb = current_gb + estimated_pending_gb
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                "Pending Images",
+                f"{pending_count:,}",
+                help="Number of discovered images not yet downloaded"
+            )
+
+        with col2:
+            st.metric(
+                "Estimated Storage Needed",
+                f"{estimated_pending_gb:.1f} GB",
+                help=f"Based on average image size of {avg_size_mb:.2f} MB"
+            )
+
+        with col3:
+            st.metric(
+                "Total Estimated (Current + Pending)",
+                f"{total_estimated_gb:.1f} GB",
+                help=f"{(total_estimated_gb/MAX_STORAGE_GB)*100:.1f}% of {MAX_STORAGE_GB} GB cap"
+            )
+
+        # Warning if exceeds cap
+        if total_estimated_gb > MAX_STORAGE_GB:
+            excess_gb = total_estimated_gb - MAX_STORAGE_GB
+            st.warning(
+                f"⚠️ **Storage Alert:** Estimated total ({total_estimated_gb:.1f} GB) "
+                f"exceeds current cap ({MAX_STORAGE_GB} GB) by {excess_gb:.1f} GB. "
+                f"Consider increasing storage allocation in config/storage_config.py"
+            )
+        else:
+            remaining_gb = MAX_STORAGE_GB - total_estimated_gb
+            st.success(
+                f"✅ **Storage OK:** {remaining_gb:.1f} GB will remain available "
+                f"after downloading all pending images."
+            )
+
 
 def discovery_page():
     """Discovery management page."""
@@ -173,37 +239,261 @@ def discovery_page():
     This allows building a large candidate pool to prioritize downloads.
     """)
 
-    col1, col2 = st.columns([3, 1])
+    # Show current counts
+    con = get_db_connection()
+    if con:
+        (candidates_count,) = con.execute("SELECT COUNT(*) FROM candidates").fetchone()
+        try:
+            (manifests_count,) = con.execute("SELECT COUNT(*) FROM manifests").fetchone()
+        except:
+            manifests_count = 0
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Image Candidates", f"{candidates_count:,}")
+        with col2:
+            st.metric("IIIF Manifests", f"{manifests_count:,}")
+        with col3:
+            try:
+                (pending_manifests,) = con.execute(
+                    "SELECT COUNT(*) FROM manifests WHERE status='pending'"
+                ).fetchone()
+            except:
+                pending_manifests = 0
+            st.metric("Pending Manifests", f"{pending_manifests:,}")
+
+    st.markdown("---")
+    st.subheader("MediaWiki Sources")
+
+    if st.button("🏛️ Wikimedia Commons", use_container_width=True):
+        with st.spinner("Starting Wikimedia Commons discovery..."):
+            try:
+                scrapy_dir = ROOT / "ancientgeo"
+                result = subprocess.run(
+                    ["python", "-m", "scrapy", "crawl", "commons_discover"],
+                    cwd=str(scrapy_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+
+                if result.returncode == 0:
+                    st.success("✅ Discovery completed!")
+                    with st.expander("View output"):
+                        st.code(result.stdout)
+                    st.rerun()
+                else:
+                    st.error(f"❌ Failed with return code {result.returncode}")
+                    with st.expander("View error"):
+                        st.code(result.stderr)
+            except subprocess.TimeoutExpired:
+                st.warning("⏱️ Still running (timeout after 5 minutes)")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+
+    st.markdown("---")
+    st.subheader("Museum & Institution APIs")
+
+    col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("🚀 Start Wikimedia Discovery", type="primary", use_container_width=True):
-            with st.spinner("Starting discovery spider..."):
+        if st.button("🖼️ Met Museum", use_container_width=True):
+            with st.spinner("Discovering Met Museum images..."):
                 try:
-                    # Run spider in subprocess
-                    import os
-                    scrapy_dir = ROOT / "ancientgeo"
                     result = subprocess.run(
-                        ["python", "-m", "scrapy", "crawl", "commons_discover"],
-                        cwd=str(scrapy_dir),
+                        ["python", "tools/met_discover.py"],
+                        cwd=str(ROOT),
                         capture_output=True,
                         text=True,
-                        timeout=300  # 5 minute timeout for initial start
+                        timeout=600
                     )
-
                     if result.returncode == 0:
-                        st.success("✅ Discovery spider completed successfully!")
-                        st.expander("View output").code(result.stdout)
+                        st.success("✅ Met discovery completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
                     else:
-                        st.error(f"❌ Spider failed with return code {result.returncode}")
-                        st.expander("View error").code(result.stderr)
-                except subprocess.TimeoutExpired:
-                    st.warning("⏱️ Spider is still running (timeout after 5 minutes). Check terminal for progress.")
+                        st.error(f"❌ Failed: {result.stderr}")
                 except Exception as e:
-                    st.error(f"❌ Error starting spider: {str(e)}")
+                    st.error(f"❌ Error: {str(e)}")
+
+        if st.button("🇪🇺 Europeana", use_container_width=True):
+            st.info("⚠️ Requires EUROPEANA_API_KEY environment variable")
+            with st.spinner("Discovering Europeana images..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/europeana_discover.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=600
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ Europeana discovery completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
 
     with col2:
-        if st.button("📊 Refresh Stats", use_container_width=True):
-            st.rerun()
+        if st.button("🇫🇷 Gallica (BnF)", use_container_width=True):
+            with st.spinner("Discovering Gallica manifests..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/gallica_discover.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=600
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ Gallica discovery completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+        if st.button("📚 Internet Archive", use_container_width=True):
+            with st.spinner("Discovering Internet Archive items..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/archive_org_discover.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=600
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ Archive.org discovery completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+    st.markdown("---")
+    st.subheader("Alternative & Additional Sources")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🎨 Gallica Direct Images", type="primary", use_container_width=True):
+            st.info("Uses direct .highres URLs instead of blocked IIIF")
+            with st.spinner("Discovering Gallica direct images..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/gallica_direct_images.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=900
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ Gallica direct discovery completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+        if st.button("🇳🇱 Rijksmuseum", use_container_width=True):
+            st.info("⚠️ Requires RIJKSMUSEUM_API_KEY environment variable")
+            with st.spinner("Discovering Rijksmuseum images..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/rijksmuseum_discover.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ Rijksmuseum discovery completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+    with col2:
+        if st.button("🏛️ Smithsonian", use_container_width=True):
+            st.info("⚠️ Requires SMITHSONIAN_API_KEY environment variable")
+            with st.spinner("Discovering Smithsonian images..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/smithsonian_discover.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ Smithsonian discovery completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+        if st.button("🚀 Run All Enhanced", use_container_width=True):
+            st.info("Runs all sources with expanded queries")
+            with st.spinner("Running all enhanced discovery sources..."):
+                try:
+                    result = subprocess.run(
+                        ["python", "tools/run_all_discovery_enhanced.py"],
+                        cwd=str(ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=1800
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ All enhanced discovery completed!")
+                        with st.expander("View results"):
+                            st.code(result.stdout)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+    st.markdown("---")
+    st.subheader("IIIF Manifest Processing")
+
+    if st.button("🎨 Process IIIF Manifests", type="primary", use_container_width=True):
+        with st.spinner("Harvesting images from IIIF manifests..."):
+            try:
+                result = subprocess.run(
+                    ["python", "tools/iiif_harvest_manifest.py"],
+                    cwd=str(ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=600
+                )
+                if result.returncode == 0:
+                    st.success("✅ IIIF harvesting completed!")
+                    with st.expander("View results"):
+                        st.code(result.stdout)
+                    st.rerun()
+                else:
+                    st.error(f"❌ Failed: {result.stderr}")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+
+    st.caption("IIIF manifests from Gallica, Archive.org, and Europeana must be processed to extract individual images.")
 
 
 def download_page():
@@ -251,6 +541,43 @@ def download_page():
                 st.warning("⏱️ Download is still running (timeout after 10 minutes). Check terminal for progress.")
             except Exception as e:
                 st.error(f"❌ Error starting download: {str(e)}")
+
+    st.markdown("---")
+    st.subheader("Failed Downloads")
+
+    # Show failed count
+    con = get_db_connection()
+    if con:
+        (failed_count,) = con.execute(
+            "SELECT COUNT(*) FROM candidates WHERE status='failed'"
+        ).fetchone()
+
+        if failed_count > 0:
+            st.warning(f"⚠️ {failed_count} downloads failed (likely due to rate limiting)")
+
+            if st.button("🔄 Retry Failed Downloads", use_container_width=True):
+                with st.spinner("Resetting failed downloads to pending..."):
+                    try:
+                        result = subprocess.run(
+                            ["python", "tools/retry_failed.py"],
+                            cwd=str(ROOT),
+                            capture_output=True,
+                            text=True,
+                            input="y\n",  # Auto-confirm
+                            timeout=60
+                        )
+
+                        if result.returncode == 0:
+                            st.success("✅ Failed downloads reset to pending!")
+                            with st.expander("View results"):
+                                st.code(result.stdout)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Reset failed: {result.stderr}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+        else:
+            st.info("✓ No failed downloads")
 
     st.markdown("---")
     st.subheader("Deduplication")
@@ -322,7 +649,7 @@ def database_browser_page():
 
 
 def image_viewer_page():
-    """Image viewer page."""
+    """Image viewer page with pagination and caching."""
     st.title("🖼️ Image Viewer")
 
     con = get_db_connection()
@@ -330,32 +657,168 @@ def image_viewer_page():
         st.error("Database not initialized")
         return
 
-    rows = con.execute("""
-        SELECT id, title, local_path, width, height
+    # Get total count
+    (total_images,) = con.execute("""
+        SELECT COUNT(*)
         FROM candidates
         WHERE status='downloaded' AND local_path IS NOT NULL
-        ORDER BY RANDOM()
-        LIMIT 20
-    """).fetchall()
+    """).fetchone()
 
-    if not rows:
+    if total_images == 0:
         st.info("No images downloaded yet")
         return
 
+    st.markdown(f"**Total Downloaded Images:** {total_images:,}")
+
+    # Initialize session state for pagination
+    if 'page_num' not in st.session_state:
+        st.session_state.page_num = 0
+
+    if 'image_cache' not in st.session_state:
+        st.session_state.image_cache = {}
+
+    IMAGES_PER_PAGE = 20
+    total_pages = (total_images + IMAGES_PER_PAGE - 1) // IMAGES_PER_PAGE
+    current_page = st.session_state.page_num
+
+    # Page navigation controls
+    col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+
+    with col1:
+        if st.button("⏮️ First", use_container_width=True):
+            st.session_state.page_num = 0
+            st.rerun()
+
+    with col2:
+        if st.button("◀️ Back", use_container_width=True, disabled=(current_page == 0)):
+            st.session_state.page_num = max(0, current_page - 1)
+            st.rerun()
+
+    with col3:
+        st.markdown(f"<div style='text-align: center; padding-top: 8px;'>**Page {current_page + 1} of {total_pages}**</div>", unsafe_allow_html=True)
+
+    with col4:
+        if st.button("Next ▶️", use_container_width=True, disabled=(current_page >= total_pages - 1)):
+            st.session_state.page_num = min(total_pages - 1, current_page + 1)
+            st.rerun()
+
+    with col5:
+        if st.button("Last ⏭️", use_container_width=True):
+            st.session_state.page_num = total_pages - 1
+            st.rerun()
+
+    st.markdown("---")
+
+    # Fetch current page images
+    offset = current_page * IMAGES_PER_PAGE
+    rows = con.execute("""
+        SELECT id, title, local_path, width, height, source
+        FROM candidates
+        WHERE status='downloaded' AND local_path IS NOT NULL
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+    """, (IMAGES_PER_PAGE, offset)).fetchall()
+
+    # Pre-cache next page images in background
+    if current_page < total_pages - 1:
+        next_offset = (current_page + 1) * IMAGES_PER_PAGE
+        next_rows = con.execute("""
+            SELECT id, local_path
+            FROM candidates
+            WHERE status='downloaded' AND local_path IS NOT NULL
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+        """, (IMAGES_PER_PAGE, next_offset)).fetchall()
+
+        # Store next page paths in cache
+        for cid, local_path in next_rows:
+            if cid not in st.session_state.image_cache:
+                st.session_state.image_cache[cid] = local_path
+
+    # Display current page images in a 4-column grid
     cols = st.columns(4)
 
-    for idx, (cid, title, local_path, width, height) in enumerate(rows):
+    for idx, (cid, title, local_path, width, height, source) in enumerate(rows):
         col = cols[idx % 4]
 
         path = Path(local_path)
         if path.exists():
             with col:
                 try:
-                    img = Image.open(path)
-                    st.image(img, caption=title[:40], use_column_width=True)
-                    st.caption(f"{width}×{height}")
+                    # Check cache first
+                    if cid in st.session_state.image_cache and Path(st.session_state.image_cache[cid]).exists():
+                        img = Image.open(st.session_state.image_cache[cid])
+                    else:
+                        img = Image.open(path)
+                        st.session_state.image_cache[cid] = str(path)
+
+                    st.image(img, use_container_width=True)
+
+                    # Metadata
+                    with st.expander(f"📄 {title[:30] if title else 'Untitled'}..."):
+                        st.caption(f"**ID:** {cid}")
+                        st.caption(f"**Dimensions:** {width}×{height}")
+                        st.caption(f"**Source:** {source}")
+                        st.caption(f"**Path:** {path.name}")
+
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Error loading image {cid}: {str(e)[:50]}")
+        else:
+            with col:
+                st.warning(f"Missing:\n{cid}")
+
+    # Clean cache if too large (keep only current and next page)
+    cache_threshold = IMAGES_PER_PAGE * 3
+    if len(st.session_state.image_cache) > cache_threshold:
+        # Keep only recent IDs
+        all_ids = {row[0] for row in rows}
+        if current_page < total_pages - 1:
+            next_ids = {row[0] for row in next_rows}
+            all_ids.update(next_ids)
+
+        # Remove old entries
+        old_keys = [k for k in st.session_state.image_cache.keys() if k not in all_ids]
+        for k in old_keys:
+            del st.session_state.image_cache[k]
+
+    st.markdown("---")
+
+    # Bottom navigation (same as top)
+    col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+
+    with col1:
+        if st.button("⏮️ First ", key="first2", use_container_width=True):
+            st.session_state.page_num = 0
+            st.rerun()
+
+    with col2:
+        if st.button("◀️ Back ", key="back2", use_container_width=True, disabled=(current_page == 0)):
+            st.session_state.page_num = max(0, current_page - 1)
+            st.rerun()
+
+    with col3:
+        # Jump to page
+        page_input = st.number_input(
+            "Jump to page:",
+            min_value=1,
+            max_value=total_pages,
+            value=current_page + 1,
+            step=1,
+            key="page_jump"
+        )
+        if st.button("Go", use_container_width=True):
+            st.session_state.page_num = page_input - 1
+            st.rerun()
+
+    with col4:
+        if st.button("Next ▶️ ", key="next2", use_container_width=True, disabled=(current_page >= total_pages - 1)):
+            st.session_state.page_num = min(total_pages - 1, current_page + 1)
+            st.rerun()
+
+    with col5:
+        if st.button("Last ⏭️ ", key="last2", use_container_width=True):
+            st.session_state.page_num = total_pages - 1
+            st.rerun()
 
 
 def analysis_page():
@@ -369,7 +832,7 @@ def analysis_page():
 
     if uploaded:
         img = Image.open(uploaded)
-        st.image(img, caption="Uploaded Image", use_column_width=True)
+        st.image(img, caption="Uploaded Image", use_container_width=True)
 
         if st.button("Run Geometry Analysis"):
             st.info("Analysis integration coming soon!")
