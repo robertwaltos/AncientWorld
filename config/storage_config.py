@@ -44,8 +44,8 @@ PERCEPTUAL_HASH_THRESHOLD = 5  # Hamming distance for near-duplicates
 AUTO_EXTRACT_FEATURES = True  # Automatically extract features after downloading
 AUTO_EXTRACT_GEOMETRY = True  # Extract geometry features (fast)
 AUTO_EXTRACT_SCALE = True  # Extract scale features (fast)
-AUTO_EXTRACT_EMBEDDINGS = False  # Extract CLIP embeddings (slow, GPU recommended)
-AUTO_EXTRACT_TDA = False  # Extract TDA features (slow)
+AUTO_EXTRACT_EMBEDDINGS = True  # Extract CLIP embeddings (slow, GPU recommended)
+AUTO_EXTRACT_TDA = True  # Extract TDA features (slow)
 
 
 def get_config():
