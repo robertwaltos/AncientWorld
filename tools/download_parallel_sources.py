@@ -146,21 +146,39 @@ def download_from_source(domain: str, batch_size: int = 50, max_images: int = 10
             print(f"[{domain}] Storage cap reached globally")
             break
 
-        # Get batch of candidates from this domain
+        # Atomically claim candidates for this worker to avoid race conditions
+        # Use UPDATE to mark as downloading, then get the IDs that were updated
+        cur = con.cursor()
+        cur.execute("""
+            UPDATE candidates
+            SET status='downloading'
+            WHERE id IN (
+                SELECT id FROM candidates
+                WHERE status='pending'
+                AND image_url LIKE ?
+                AND (width IS NULL OR width >= ?)
+                AND (height IS NULL OR height >= ?)
+                ORDER BY width DESC, height DESC
+                LIMIT ?
+            )
+        """, (f"%{domain}%", MIN_IMAGE_WIDTH, MIN_IMAGE_HEIGHT, batch_size))
+
+        claimed_count = cur.rowcount
+        con.commit()
+
+        if claimed_count == 0:
+            print(f"[{domain}] No more pending candidates")
+            break
+
+        # Now get the details of the candidates we claimed
         batch = con.execute("""
             SELECT id, image_url, mime, sha1, width, height
             FROM candidates
-            WHERE status='pending'
+            WHERE status='downloading'
             AND image_url LIKE ?
-            AND (width IS NULL OR width >= ?)
-            AND (height IS NULL OR height >= ?)
-            ORDER BY width DESC, height DESC
+            ORDER BY id DESC
             LIMIT ?
-        """, (f"%{domain}%", MIN_IMAGE_WIDTH, MIN_IMAGE_HEIGHT, batch_size)).fetchall()
-
-        if not batch:
-            print(f"[{domain}] No more pending candidates")
-            break
+        """, (f"%{domain}%", claimed_count)).fetchall()
 
         for cid, url, mime, sha1, width, height in batch:
             if downloaded_count >= max_images:
@@ -170,9 +188,7 @@ def download_from_source(domain: str, batch_size: int = 50, max_images: int = 10
                 print(f"[{domain}] Storage cap reached")
                 break
 
-            # Mark as downloading
-            mark_candidate(con, cid, "downloading")
-            con.commit()
+            # Candidate already marked as 'downloading' atomically in batch claim
 
             # Determine filename
             name_base = sha1.lower() if sha1 else f"id{cid}"
