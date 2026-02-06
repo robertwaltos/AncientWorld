@@ -288,11 +288,20 @@ def download_from_source(domain: str, batch_size: int = 50, max_images: int = 10
     return downloaded_count
 
 
-def get_top_sources(limit: int = 10) -> list:
-    """Get domains with most pending candidates."""
+def get_top_sources(limit: int = None, min_pending: int = 10) -> list:
+    """
+    Get domains with most pending candidates.
+
+    Args:
+        limit: Maximum number of sources to return (None = auto-detect)
+        min_pending: Minimum pending candidates for a source to be included
+
+    Returns:
+        List of (domain, pending_count) tuples
+    """
     con = sqlite3.connect(DB)
     rows = con.execute("""
-        SELECT image_url FROM candidates WHERE status='pending' LIMIT 10000
+        SELECT image_url FROM candidates WHERE status='pending' LIMIT 50000
     """).fetchall()
 
     from collections import defaultdict
@@ -304,36 +313,59 @@ def get_top_sources(limit: int = 10) -> list:
 
     con.close()
 
-    # Return top domains
-    return [domain for domain, count in sorted(domains.items(), key=lambda x: x[1], reverse=True)[:limit]]
+    # Filter by minimum pending count and sort
+    valid_sources = [(domain, count) for domain, count in domains.items() if count >= min_pending]
+    valid_sources.sort(key=lambda x: x[1], reverse=True)
+
+    # Auto-limit if not specified (use all sources with sufficient pending)
+    if limit is None:
+        return valid_sources
+    else:
+        return valid_sources[:limit]
 
 
-def main(num_workers: int = 5, images_per_source: int = 500):
+def main(num_workers: int = None, images_per_source: int = 500, min_pending_per_source: int = 10):
     """
     Run parallel downloads from multiple sources.
 
     Args:
-        num_workers: Number of parallel download processes
+        num_workers: Number of parallel workers (None = auto-scale to number of sources)
         images_per_source: Max images to download per source before stopping
+        min_pending_per_source: Minimum pending images for a source to be included
     """
-    print(f"Starting parallel downloads with {num_workers} workers")
-    print(f"Target: {images_per_source} images per source")
-    print()
+    # Get sources with sufficient pending candidates
+    sources_with_counts = get_top_sources(limit=None, min_pending=min_pending_per_source)
 
-    # Get top sources
-    top_sources = get_top_sources(limit=num_workers)
-
-    if not top_sources:
+    if not sources_with_counts:
         print("No pending candidates found")
         return
 
-    print(f"Top sources: {', '.join(top_sources)}")
+    # Auto-scale workers to match number of sources
+    if num_workers is None:
+        num_workers = min(len(sources_with_counts), mp.cpu_count())
+        print(f"Auto-scaling to {num_workers} workers (based on {len(sources_with_counts)} sources)")
+    else:
+        num_workers = min(num_workers, len(sources_with_counts))
+
+    print(f"Starting parallel downloads")
+    print(f"Workers: {num_workers}")
+    print(f"Sources with pending: {len(sources_with_counts)}")
+    print(f"Target: {images_per_source} images per source")
     print()
+
+    # Show top sources
+    print("Top sources by pending count:")
+    for domain, count in sources_with_counts[:10]:
+        print(f"  {domain:40} {count:,} pending")
+    print()
+
+    # Extract just the domains for processing
+    top_domains = [domain for domain, _ in sources_with_counts[:num_workers]]
 
     # Create process pool
     with mp.Pool(processes=num_workers) as pool:
         results = pool.starmap(download_from_source,
-                              [(domain, 50, images_per_source) for domain in top_sources])
+                              [(domain, 50, images_per_source) for domain in top_domains])
 
     total_downloaded = sum(results)
     print()
@@ -345,10 +377,16 @@ def main(num_workers: int = 5, images_per_source: int = 500):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Parallel multi-source downloader")
-    parser.add_argument("--workers", type=int, default=5, help="Number of parallel workers")
-    parser.add_argument("--per-source", type=int, default=500, help="Images per source")
+    parser = argparse.ArgumentParser(description="Parallel multi-source downloader with auto-scaling")
+    parser.add_argument("--workers", type=int, default=None,
+                       help="Number of parallel workers (default: auto-scale to available sources)")
+    parser.add_argument("--per-source", type=int, default=500,
+                       help="Images per source before stopping")
+    parser.add_argument("--min-pending", type=int, default=10,
+                       help="Minimum pending candidates required for a source to be included")
 
     args = parser.parse_args()
 
-    main(num_workers=args.workers, images_per_source=args.per_source)
+    main(num_workers=args.workers,
+         images_per_source=args.per_source,
+         min_pending_per_source=args.min_pending)
