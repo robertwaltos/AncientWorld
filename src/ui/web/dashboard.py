@@ -239,12 +239,12 @@ def dashboard_page():
 
 
 def discovery_page():
-    """Discovery management page."""
+    """Discovery management page with unified parallel execution."""
     st.title("🔍 Discovery Management")
 
     st.markdown("""
     Discovery phase: Catalog images before downloading.
-    This allows building a large candidate pool to prioritize downloads.
+    Run all sources in parallel to build a large candidate pool.
     """)
 
     # Show current counts
@@ -271,217 +271,89 @@ def discovery_page():
             st.metric("Pending Manifests", f"{pending_manifests:,}")
 
     st.markdown("---")
-    st.subheader("MediaWiki Sources")
 
-    if st.button("🏛️ Wikimedia Commons", use_container_width=True):
-        with st.spinner("Starting Wikimedia Commons discovery..."):
-            try:
-                scrapy_dir = ROOT / "ancientgeo"
-                result = subprocess.run(
-                    ["python", "-m", "scrapy", "crawl", "commons_discover"],
-                    cwd=str(scrapy_dir),
-                    capture_output=True,
-                    text=True,
-                    timeout=300
-                )
+    # Single unified discovery button
+    if st.button("🚀 Run All Discovery Sources", type="primary", use_container_width=True):
+        st.info("Running all sources in parallel...")
 
-                if result.returncode == 0:
-                    st.success("✅ Discovery completed!")
-                    with st.expander("View output"):
-                        st.code(result.stdout)
-                    st.rerun()
-                else:
-                    st.error(f"❌ Failed with return code {result.returncode}")
-                    with st.expander("View error"):
-                        st.code(result.stderr)
-            except subprocess.TimeoutExpired:
-                st.warning("⏱️ Still running (timeout after 5 minutes)")
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+        # Import the discovery orchestrator
+        sys.path.insert(0, str(ROOT / "tools"))
+        from run_all_discovery_parallel import DISCOVERY_SOURCES, run_discovery_source
 
-    st.markdown("---")
-    st.subheader("Museum & Institution APIs")
+        # Create progress containers for each source
+        source_status = {}
+        for name, _ in DISCOVERY_SOURCES:
+            with st.container():
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(f"**{name}**")
+                with col2:
+                    status_placeholder = st.empty()
+                    status_placeholder.info("Queued")
+                source_status[name] = status_placeholder
 
-    col1, col2 = st.columns(2)
+        # Run discovery in parallel using multiprocessing
+        import multiprocessing as mp
+        import time
 
-    with col1:
-        if st.button("🖼️ Met Museum", use_container_width=True):
-            with st.spinner("Discovering Met Museum images..."):
-                try:
-                    result = subprocess.run(
-                        ["python", "tools/met_discover.py"],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=600
-                    )
-                    if result.returncode == 0:
-                        st.success("✅ Met discovery completed!")
-                        with st.expander("View results"):
-                            st.code(result.stdout)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+        work_items = [(name, script) for name, script in DISCOVERY_SOURCES]
 
-        if st.button("🇪🇺 Europeana", use_container_width=True):
-            st.info("⚠️ Requires EUROPEANA_API_KEY environment variable")
-            with st.spinner("Discovering Europeana images..."):
-                try:
-                    result = subprocess.run(
-                        ["python", "tools/europeana_discover.py"],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=600
-                    )
-                    if result.returncode == 0:
-                        st.success("✅ Europeana discovery completed!")
-                        with st.expander("View results"):
-                            st.code(result.stdout)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+        # Update status to "Searching..."
+        for name in source_status:
+            source_status[name].warning("Searching...")
 
-    with col2:
-        if st.button("🇫🇷 Gallica (BnF)", use_container_width=True):
-            with st.spinner("Discovering Gallica manifests..."):
-                try:
-                    result = subprocess.run(
-                        ["python", "tools/gallica_discover.py"],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=600
-                    )
-                    if result.returncode == 0:
-                        st.success("✅ Gallica discovery completed!")
-                        with st.expander("View results"):
-                            st.code(result.stdout)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+        # Run all in parallel
+        with mp.Pool(processes=len(DISCOVERY_SOURCES)) as pool:
+            async_results = pool.starmap_async(run_discovery_source, work_items)
 
-        if st.button("📚 Internet Archive", use_container_width=True):
-            with st.spinner("Discovering Internet Archive items..."):
-                try:
-                    result = subprocess.run(
-                        ["python", "tools/archive_org_discover.py"],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=600
-                    )
-                    if result.returncode == 0:
-                        st.success("✅ Archive.org discovery completed!")
-                        with st.expander("View results"):
-                            st.code(result.stdout)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+            # Poll for completion
+            while not async_results.ready():
+                time.sleep(1)
+
+            # Get results
+            results = async_results.get()
+
+        # Update final status for each source
+        for name, success, message, elapsed in results:
+            if success:
+                source_status[name].success(f"Completed ({elapsed:.1f}s)")
+            else:
+                source_status[name].error(f"Failed: {message}")
+
+        # Overall summary
+        successful = sum(1 for _, s, _, _ in results if s)
+        failed = len(results) - successful
+
+        if failed == 0:
+            st.success(f"All {successful} sources completed successfully!")
+            st.balloons()
+        else:
+            st.warning(f"{successful} succeeded, {failed} failed")
+
+        st.rerun()
 
     st.markdown("---")
-    st.subheader("Alternative & Additional Sources")
+    st.subheader("Available Discovery Sources")
 
-    col1, col2 = st.columns(2)
+    # List all sources
+    sources_info = [
+        ("Met Museum", "Metropolitan Museum of Art API"),
+        ("Europeana", "European cultural heritage aggregator"),
+        ("Smithsonian", "Smithsonian Institution collections"),
+        ("Getty", "Getty Museum collections"),
+        ("Archive.org", "Internet Archive image collections"),
+        ("British Library", "British Library collections"),
+        ("Gallica (API)", "French National Library IIIF API"),
+        ("Gallica (Direct)", "Direct Gallica image URLs"),
+    ]
 
-    with col1:
-        if st.button("🎨 Gallica Direct Images", type="primary", use_container_width=True):
-            st.info("Uses direct .highres URLs instead of blocked IIIF")
-            with st.spinner("Discovering Gallica direct images..."):
-                try:
-                    result = subprocess.run(
-                        ["python", "tools/gallica_direct_images.py"],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=900
-                    )
-                    if result.returncode == 0:
-                        st.success("✅ Gallica direct discovery completed!")
-                        with st.expander("View results"):
-                            st.code(result.stdout)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
-
-        if st.button("🇳🇱 Rijksmuseum", use_container_width=True):
-            st.info("⚠️ Requires RIJKSMUSEUM_API_KEY environment variable")
-            with st.spinner("Discovering Rijksmuseum images..."):
-                try:
-                    result = subprocess.run(
-                        ["python", "tools/rijksmuseum_discover.py"],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
-                    if result.returncode == 0:
-                        st.success("✅ Rijksmuseum discovery completed!")
-                        with st.expander("View results"):
-                            st.code(result.stdout)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
-
-    with col2:
-        if st.button("🏛️ Smithsonian", use_container_width=True):
-            st.info("⚠️ Requires SMITHSONIAN_API_KEY environment variable")
-            with st.spinner("Discovering Smithsonian images..."):
-                try:
-                    result = subprocess.run(
-                        ["python", "tools/smithsonian_discover.py"],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
-                    if result.returncode == 0:
-                        st.success("✅ Smithsonian discovery completed!")
-                        with st.expander("View results"):
-                            st.code(result.stdout)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
-
-        if st.button("🚀 Run All Enhanced", use_container_width=True):
-            st.info("Runs all sources with expanded queries")
-            with st.spinner("Running all enhanced discovery sources..."):
-                try:
-                    result = subprocess.run(
-                        ["python", "tools/run_all_discovery_enhanced.py"],
-                        cwd=str(ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=1800
-                    )
-                    if result.returncode == 0:
-                        st.success("✅ All enhanced discovery completed!")
-                        with st.expander("View results"):
-                            st.code(result.stdout)
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Failed: {result.stderr}")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+    for name, description in sources_info:
+        st.write(f"- **{name}**: {description}")
 
     st.markdown("---")
     st.subheader("IIIF Manifest Processing")
 
-    if st.button("🎨 Process IIIF Manifests", type="primary", use_container_width=True):
+    if st.button("🎨 Process IIIF Manifests", type="secondary", use_container_width=True):
         with st.spinner("Harvesting images from IIIF manifests..."):
             try:
                 result = subprocess.run(
@@ -492,14 +364,14 @@ def discovery_page():
                     timeout=600
                 )
                 if result.returncode == 0:
-                    st.success("✅ IIIF harvesting completed!")
+                    st.success("IIIF harvesting completed!")
                     with st.expander("View results"):
                         st.code(result.stdout)
                     st.rerun()
                 else:
-                    st.error(f"❌ Failed: {result.stderr}")
+                    st.error(f"Failed: {result.stderr}")
             except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+                st.error(f"Error: {str(e)}")
 
     st.caption("IIIF manifests from Gallica, Archive.org, and Europeana must be processed to extract individual images.")
 
