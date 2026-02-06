@@ -51,7 +51,7 @@ def main(
     if geometry:
         if verbose:
             print("=" * 70)
-            print("🔷 Extracting geometry features...")
+            print("Extracting geometry features...")
             print("=" * 70)
         success, output = run_extraction("extract_geometry_features.py")
         results["geometry"] = (success, output)
@@ -62,7 +62,7 @@ def main(
     if scale:
         if verbose:
             print("=" * 70)
-            print("🎯 Extracting scale features...")
+            print("Extracting scale features...")
             print("=" * 70)
         success, output = run_extraction("extract_scale_features.py")
         results["scale"] = (success, output)
@@ -73,7 +73,7 @@ def main(
     if embeddings:
         if verbose:
             print("=" * 70)
-            print("🤖 Extracting CLIP embeddings...")
+            print("Extracting CLIP embeddings...")
             print("=" * 70)
         success, output = run_extraction("clip_embed_images.py")
         results["embeddings"] = (success, output)
@@ -84,7 +84,7 @@ def main(
     if tda:
         if verbose:
             print("=" * 70)
-            print("🔬 Extracting TDA features...")
+            print("Extracting TDA features...")
             print("=" * 70)
         success, output = run_extraction("extract_tda_features.py")
         results["tda"] = (success, output)
@@ -98,7 +98,7 @@ def main(
         print("SUMMARY")
         print("=" * 70)
         for name, (success, output) in results.items():
-            status = "✅" if success else "❌"
+            status = "[OK]" if success else "[FAIL]"
             print(f"{status} {name}: {output}")
         print("=" * 70)
 
